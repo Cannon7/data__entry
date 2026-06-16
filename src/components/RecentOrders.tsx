@@ -1,20 +1,8 @@
-import { supabase } from "../lib/supabase";
+import { fetchRecentOrders } from "../lib/orders";
 import type { OrderWithRelations } from "../lib/types";
+import { OrderListItem } from "./OrderListItem";
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-function formatSaleType(saleType: string | null) {
-  if (saleType === "campus") return "Campus";
-  if (saleType === "fm") return "FM";
-  return saleType ?? "—";
-}
+export { fetchRecentOrders };
 
 interface RecentOrdersProps {
   orders: OrderWithRelations[];
@@ -53,53 +41,10 @@ export function RecentOrders({ orders, loading, error }: RecentOrdersProps) {
       ) : (
         <ul className="mt-4 divide-y divide-border">
           {orders.map((order) => (
-            <li key={order.id} className="flex gap-4 py-3 first:pt-0 last:pb-0">
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-medium text-slate-900">
-                  {order.products?.product ?? "Unknown product"}
-                  {order.custom ? " (custom)" : " (premade)"}
-                </p>
-                <p className="truncate text-sm text-muted">
-                  {order.customers?.name ?? "Walk-in"} · {formatSaleType(order.sale_type)}
-                  {!order.custom && order.design != null && ` · Design #${order.design}`}
-                </p>
-                {order.notes && (
-                  <p className="mt-0.5 truncate text-sm text-slate-600">{order.notes}</p>
-                )}
-              </div>
-              <div className="shrink-0 text-right text-sm">
-                <p className="text-muted">{formatDate(order.created_at)}</p>
-                <p className="font-medium text-slate-700">{order.employee ?? "—"}</p>
-              </div>
-            </li>
+            <OrderListItem key={order.id} order={order} />
           ))}
         </ul>
       )}
     </div>
   );
-}
-
-export async function fetchRecentOrders(): Promise<OrderWithRelations[]> {
-  const { data, error } = await supabase
-    .from("orders")
-    .select(
-      `
-      id,
-      created_at,
-      product_id,
-      custom,
-      design,
-      sale_type,
-      customer_id,
-      employee,
-      notes,
-      products ( product ),
-      customers ( name, email, phone_number )
-    `
-    )
-    .order("created_at", { ascending: false })
-    .limit(10);
-
-  if (error) throw error;
-  return (data ?? []) as unknown as OrderWithRelations[];
 }

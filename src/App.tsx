@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { CustomerSection } from "./components/CustomerSection";
+import { OrderHistory } from "./components/OrderHistory";
 import { fetchRecentOrders, RecentOrders } from "./components/RecentOrders";
 import { supabase } from "./lib/supabase";
 import { getErrorMessage } from "./lib/errors";
@@ -8,10 +9,10 @@ import {
   type Customer,
   type OrderWithRelations,
   type Product,
-  type SaleType,
 } from "./lib/types";
 
 const EMPLOYEE_STORAGE_KEY = "order-entry-employee";
+type Tab = "entry" | "history";
 
 function formatPrice(dollars: number | null) {
   if (dollars == null) return null;
@@ -34,13 +35,15 @@ export default function App() {
   );
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [productId, setProductId] = useState("");
-  const [saleType, setSaleType] = useState<SaleType>("campus");
   const [custom, setCustom] = useState(false);
   const [design, setDesign] = useState("");
   const [notes, setNotes] = useState("");
+  const [card, setCard] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<Tab>("entry");
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
 
   const selectedProduct = useMemo(
     () => products.find((p) => p.id === Number(productId)) ?? null,
@@ -49,8 +52,8 @@ export default function App() {
 
   const price = useMemo(() => {
     if (!selectedProduct) return null;
-    return getProductPrice(selectedProduct, saleType, custom);
-  }, [selectedProduct, saleType, custom]);
+    return getProductPrice(selectedProduct, custom);
+  }, [selectedProduct, custom]);
 
   useEffect(() => {
     async function loadProducts() {
@@ -90,10 +93,10 @@ export default function App() {
   function resetForm() {
     setCustomer(null);
     setProductId("");
-    setSaleType("campus");
     setCustom(false);
     setDesign("");
     setNotes("");
+    setCard(true);
     setSubmitError(null);
   }
 
@@ -125,10 +128,10 @@ export default function App() {
       product_id: Number(productId),
       custom,
       design: !custom ? Number(design) : null,
-      sale_type: saleType,
       customer_id: customer.id,
       employee: employee.trim(),
       notes: notes.trim() || null,
+      card,
     });
 
     setSubmitting(false);
@@ -146,6 +149,7 @@ export default function App() {
       const orders = await fetchRecentOrders();
       setRecentOrders(orders);
       setOrdersError(null);
+      setHistoryRefreshKey((key) => key + 1);
     } catch {
       // Non-blocking — order was saved successfully.
     }
@@ -191,8 +195,37 @@ export default function App() {
         </div>
       </header>
 
-      <main className="mx-auto grid max-w-5xl gap-6 px-4 py-8 sm:px-6 lg:grid-cols-5">
-        <section className="lg:col-span-3">
+      <div className="border-b border-border bg-card">
+        <div className="mx-auto flex max-w-5xl gap-1 px-4 sm:px-6">
+          <button
+            type="button"
+            onClick={() => setActiveTab("entry")}
+            className={`border-b-2 px-4 py-3 text-sm font-medium transition ${
+              activeTab === "entry"
+                ? "border-brand-600 text-brand-700"
+                : "border-transparent text-muted hover:text-slate-700"
+            }`}
+          >
+            New order
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("history")}
+            className={`border-b-2 px-4 py-3 text-sm font-medium transition ${
+              activeTab === "history"
+                ? "border-brand-600 text-brand-700"
+                : "border-transparent text-muted hover:text-slate-700"
+            }`}
+          >
+            Order history
+          </button>
+        </div>
+      </div>
+
+      <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+        {activeTab === "entry" ? (
+          <div className="grid gap-6 lg:grid-cols-5">
+            <section className="lg:col-span-3">
           <form
             onSubmit={handleSubmit}
             className="rounded-2xl border border-border bg-card p-6 shadow-sm"
@@ -233,34 +266,6 @@ export default function App() {
                   ))}
                 </select>
               </div>
-
-              <fieldset>
-                <legend className="mb-2 text-sm font-medium text-slate-700">
-                  Sale type <span className="text-danger">*</span>
-                </legend>
-                <div className="flex gap-3">
-                  {(["campus", "fm"] as const).map((type) => (
-                    <label
-                      key={type}
-                      className={`flex flex-1 cursor-pointer items-center justify-center rounded-lg border px-4 py-3 text-sm font-medium transition ${
-                        saleType === type
-                          ? "border-brand-500 bg-brand-50 text-brand-700"
-                          : "border-border bg-white text-slate-700 hover:bg-slate-50"
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="saleType"
-                        value={type}
-                        checked={saleType === type}
-                        onChange={() => setSaleType(type)}
-                        className="sr-only"
-                      />
-                      {type === "campus" ? "Campus" : "FM"}
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
 
               <fieldset>
                 <legend className="mb-2 text-sm font-medium text-slate-700">
@@ -313,6 +318,36 @@ export default function App() {
                 </div>
               )}
 
+              <fieldset>
+                <legend className="mb-2 text-sm font-medium text-slate-700">
+                  Payment <span className="text-danger">*</span>
+                </legend>
+                <div className="flex gap-3">
+                  {[
+                    { value: true, label: "Card" },
+                    { value: false, label: "Cash" },
+                  ].map(({ value, label }) => (
+                    <label
+                      key={label}
+                      className={`flex flex-1 cursor-pointer items-center justify-center rounded-lg border px-4 py-3 text-sm font-medium transition ${
+                        card === value
+                          ? "border-brand-500 bg-brand-50 text-brand-700"
+                          : "border-border bg-white text-slate-700 hover:bg-slate-50"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="payment"
+                        checked={card === value}
+                        onChange={() => setCard(value)}
+                        className="sr-only"
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+
               <div>
                 <label htmlFor="notes" className="mb-1.5 block text-sm font-medium text-slate-700">
                   Notes
@@ -353,13 +388,17 @@ export default function App() {
           </form>
         </section>
 
-        <aside className="lg:col-span-2">
-          <RecentOrders
-            orders={recentOrders}
-            loading={loadingOrders}
-            error={ordersError}
-          />
-        </aside>
+            <aside className="lg:col-span-2">
+              <RecentOrders
+                orders={recentOrders}
+                loading={loadingOrders}
+                error={ordersError}
+              />
+            </aside>
+          </div>
+        ) : (
+          <OrderHistory active={activeTab === "history"} refreshKey={historyRefreshKey} />
+        )}
       </main>
     </div>
   );

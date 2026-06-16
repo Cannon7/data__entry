@@ -1,13 +1,9 @@
-export type SaleType = "campus" | "fm";
-
 export interface Product {
   id: number;
   product: string | null;
   COGS: number | null;
   campus_premade: number | null;
   campus_custom: number | null;
-  fm_premade: number | null;
-  fm_custom: number | null;
 }
 
 export interface Customer {
@@ -24,10 +20,10 @@ export interface Order {
   product_id: number | null;
   custom: boolean | null;
   design: number | null;
-  sale_type: string | null;
   customer_id: number | null;
   employee: string | null;
   notes: string | null;
+  card: boolean | null;
 }
 
 export interface OrderWithRelations extends Order {
@@ -35,13 +31,6 @@ export interface OrderWithRelations extends Order {
   customers: Pick<Customer, "name" | "email" | "phone_number"> | null;
 }
 
-export function getProductPrice(
-  product: Product,
-  saleType: SaleType,
-  custom: boolean
-): number | null {
-  if (saleType === "campus") {
-    return custom ? product.campus_custom : product.campus_premade;
-  }
-  return custom ? product.fm_custom : product.fm_premade;
+export function getProductPrice(product: Product, custom: boolean): number | null {
+  return custom ? product.campus_custom : product.campus_premade;
 }
