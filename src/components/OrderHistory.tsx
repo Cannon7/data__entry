@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { getErrorMessage } from "../lib/errors";
-import { fetchAllOrders, groupOrdersByDay, type OrdersByDay } from "../lib/orders";
+import { fetchAllOrders, formatCurrency, groupOrdersByDay, type OrdersByDay } from "../lib/orders";
 import { OrderListItem } from "./OrderListItem";
 
 interface OrderHistoryProps {
@@ -63,6 +63,7 @@ export function OrderHistory({ active, refreshKey }: OrderHistoryProps) {
   }
 
   const totalOrders = groups.reduce((sum, group) => sum + group.orders.length, 0);
+  const totalRevenue = groups.reduce((sum, group) => sum + group.revenue, 0);
 
   return (
     <div className="space-y-6">
@@ -72,6 +73,9 @@ export function OrderHistory({ active, refreshKey }: OrderHistoryProps) {
           <p className="text-sm text-muted">
             {totalOrders} order{totalOrders === 1 ? "" : "s"} across {groups.length} day
             {groups.length === 1 ? "" : "s"}
+            {totalOrders > 0 && (
+              <> · {formatCurrency(totalRevenue)} total revenue</>
+            )}
           </p>
         </div>
         {loading && (
@@ -91,9 +95,12 @@ export function OrderHistory({ active, refreshKey }: OrderHistoryProps) {
           >
             <div className="flex items-center justify-between border-b border-border bg-slate-50 px-5 py-3">
               <h3 className="font-semibold text-slate-900">{group.label}</h3>
-              <span className="text-sm text-muted">
-                {group.orders.length} order{group.orders.length === 1 ? "" : "s"}
-              </span>
+              <div className="text-right">
+                <p className="font-semibold text-slate-900">{formatCurrency(group.revenue)}</p>
+                <p className="text-sm text-muted">
+                  {group.orders.length} order{group.orders.length === 1 ? "" : "s"}
+                </p>
+              </div>
             </div>
             <ul className="divide-y divide-border px-5">
               {group.orders.map((order) => (

@@ -1,5 +1,5 @@
 import { supabase } from "./supabase";
-import type { OrderWithRelations } from "./types";
+import { getOrderRevenue, type OrderWithRelations } from "./types";
 
 export const ORDER_SELECT = `
   id,
@@ -11,9 +11,16 @@ export const ORDER_SELECT = `
   employee,
   notes,
   card,
-  products ( product ),
+  products ( product, campus_premade, campus_custom ),
   customers ( name, email, phone_number )
 `;
+
+export function formatCurrency(dollars: number) {
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "USD",
+  }).format(dollars);
+}
 
 export function formatPaymentMethod(card: boolean | null) {
   if (card === true) return "Card";
@@ -75,6 +82,11 @@ export interface OrdersByDay {
   dayKey: string;
   label: string;
   orders: OrderWithRelations[];
+  revenue: number;
+}
+
+function sumDayRevenue(orders: OrderWithRelations[]) {
+  return orders.reduce((sum, order) => sum + (getOrderRevenue(order) ?? 0), 0);
 }
 
 export function groupOrdersByDay(orders: OrderWithRelations[]): OrdersByDay[] {
@@ -96,6 +108,7 @@ export function groupOrdersByDay(orders: OrderWithRelations[]): OrdersByDay[] {
       dayKey,
       label: formatDayLabel(dayKey),
       orders: dayOrders,
+      revenue: sumDayRevenue(dayOrders),
     }));
 }
 

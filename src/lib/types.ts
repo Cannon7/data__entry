@@ -27,10 +27,18 @@ export interface Order {
 }
 
 export interface OrderWithRelations extends Order {
-  products: Pick<Product, "product"> | null;
+  products: Pick<Product, "product" | "campus_premade" | "campus_custom"> | null;
   customers: Pick<Customer, "name" | "email" | "phone_number"> | null;
 }
 
-export function getProductPrice(product: Product, custom: boolean): number | null {
+export function getProductPrice(
+  product: Pick<Product, "campus_premade" | "campus_custom">,
+  custom: boolean
+): number | null {
   return custom ? product.campus_custom : product.campus_premade;
+}
+
+export function getOrderRevenue(order: OrderWithRelations): number | null {
+  if (!order.products) return null;
+  return getProductPrice(order.products, order.custom ?? false);
 }
