@@ -1,3 +1,5 @@
+export const DOUBLE_SIDED_SURCHARGE = 3;
+
 export interface Product {
   id: number;
   product: string | null;
@@ -24,11 +26,34 @@ export interface Order {
   employee: string | null;
   notes: string | null;
   card: boolean | null;
+  double_sided: boolean | null;
+  price_override: number | null;
+}
+
+export interface PreOrder extends Order {
+  pre_order_filled: boolean | null;
 }
 
 export interface OrderWithRelations extends Order {
   products: Pick<Product, "product" | "campus_premade" | "campus_custom"> | null;
   customers: Pick<Customer, "name" | "email" | "phone_number"> | null;
+}
+
+export interface PreOrderWithRelations extends PreOrder {
+  products: Pick<Product, "product" | "campus_premade" | "campus_custom"> | null;
+  customers: Pick<Customer, "name" | "email" | "phone_number"> | null;
+}
+
+export interface OrderInsert {
+  product_id: number;
+  custom: boolean;
+  design: number | null;
+  customer_id: number;
+  employee: string;
+  notes: string | null;
+  card: boolean;
+  double_sided: boolean;
+  price_override: number | null;
 }
 
 export function getProductPrice(
@@ -38,7 +63,27 @@ export function getProductPrice(
   return custom ? product.campus_custom : product.campus_premade;
 }
 
-export function getOrderRevenue(order: OrderWithRelations): number | null {
-  if (!order.products) return null;
-  return getProductPrice(order.products, order.custom ?? false);
+export function getCalculatedUnitPrice(
+  product: Pick<Product, "campus_premade" | "campus_custom"> | null,
+  custom: boolean,
+  doubleSided: boolean
+): number | null {
+  if (!product) return null;
+  const base = getProductPrice(product, custom);
+  if (base == null) return null;
+  return base + (doubleSided ? DOUBLE_SIDED_SURCHARGE : 0);
+}
+
+export function getOrderRevenue(order: {
+  custom: boolean | null;
+  double_sided: boolean | null;
+  price_override: number | null;
+  products: Pick<Product, "campus_premade" | "campus_custom"> | null;
+}): number | null {
+  if (order.price_override != null) return order.price_override;
+  return getCalculatedUnitPrice(
+    order.products,
+    order.custom ?? false,
+    order.double_sided ?? false
+  );
 }

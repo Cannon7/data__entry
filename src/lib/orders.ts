@@ -11,6 +11,8 @@ export const ORDER_SELECT = `
   employee,
   notes,
   card,
+  double_sided,
+  price_override,
   products ( product, campus_premade, campus_custom ),
   customers ( name, email, phone_number )
 `;

@@ -1,18 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 import { CustomerSection } from "./components/CustomerSection";
 import { OrderHistory } from "./components/OrderHistory";
+import { PreOrdersPanel } from "./components/PreOrdersPanel";
 import { fetchRecentOrders, RecentOrders } from "./components/RecentOrders";
 import { supabase } from "./lib/supabase";
+import { PRE_ORDERS_TABLE } from "./lib/preOrders";
 import { getErrorMessage } from "./lib/errors";
 import {
-  getProductPrice,
+  DOUBLE_SIDED_SURCHARGE,
+  getCalculatedUnitPrice,
   type Customer,
   type OrderWithRelations,
   type Product,
 } from "./lib/types";
 
 const EMPLOYEE_STORAGE_KEY = "order-entry-employee";
-type Tab = "entry" | "history";
+type Tab = "entry" | "history" | "preorders";
 
 function formatPrice(dollars: number | null) {
   if (dollars == null) return null;
@@ -39,21 +42,40 @@ export default function App() {
   const [design, setDesign] = useState("");
   const [notes, setNotes] = useState("");
   const [card, setCard] = useState(true);
+  const [doubleSided, setDoubleSided] = useState(false);
+  const [preOrder, setPreOrder] = useState(false);
+  const [quantity, setQuantity] = useState("1");
+  const [priceOverride, setPriceOverride] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("entry");
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
+  const [preOrdersRefreshKey, setPreOrdersRefreshKey] = useState(0);
 
   const selectedProduct = useMemo(
     () => products.find((p) => p.id === Number(productId)) ?? null,
     [products, productId]
   );
 
-  const price = useMemo(() => {
+  const unitPrice = useMemo(() => {
+    if (priceOverride.trim()) {
+      const value = Number(priceOverride);
+      return Number.isFinite(value) && value >= 0 ? value : null;
+    }
     if (!selectedProduct) return null;
-    return getProductPrice(selectedProduct, custom);
-  }, [selectedProduct, custom]);
+    return getCalculatedUnitPrice(selectedProduct, custom, doubleSided);
+  }, [selectedProduct, custom, doubleSided, priceOverride]);
+
+  const quantityNum = useMemo(() => {
+    const value = Number(quantity);
+    return Number.isInteger(value) && value >= 1 ? value : null;
+  }, [quantity]);
+
+  const lineTotal = useMemo(() => {
+    if (unitPrice == null || quantityNum == null) return null;
+    return unitPrice * quantityNum;
+  }, [unitPrice, quantityNum]);
 
   useEffect(() => {
     async function loadProducts() {
@@ -97,6 +119,10 @@ export default function App() {
     setDesign("");
     setNotes("");
     setCard(true);
+    setDoubleSided(false);
+    setPreOrder(false);
+    setQuantity("1");
+    setPriceOverride("");
     setSubmitError(null);
   }
 
@@ -121,10 +147,25 @@ export default function App() {
       setSubmitError("Enter a design number for premade orders.");
       return;
     }
+    if (!quantityNum) {
+      setSubmitError("Enter a valid quantity (1 or more).");
+      return;
+    }
+    if (priceOverride.trim()) {
+      const value = Number(priceOverride);
+      if (!Number.isFinite(value) || value < 0) {
+        setSubmitError("Enter a valid price override.");
+        return;
+      }
+    }
+    if (unitPrice == null) {
+      setSubmitError("Unable to determine price for this product.");
+      return;
+    }
 
     setSubmitting(true);
 
-    const { error } = await supabase.from("orders").insert({
+    const payload = {
       product_id: Number(productId),
       custom,
       design: !custom ? Number(design) : null,
@@ -132,17 +173,41 @@ export default function App() {
       employee: employee.trim(),
       notes: notes.trim() || null,
       card,
-    });
+      double_sided: doubleSided,
+      price_override: priceOverride.trim() ? Number(priceOverride) : null,
+    };
 
-    setSubmitting(false);
+    const rows = Array.from({ length: quantityNum }, () => payload);
 
-    if (error) {
-      setSubmitError(error.message);
+    const { error: orderError } = await supabase.from("orders").insert(rows);
+
+    if (orderError) {
+      setSubmitting(false);
+      setSubmitError(orderError.message);
       return;
     }
 
+    if (preOrder) {
+      const { error: preOrderError } = await supabase.from(PRE_ORDERS_TABLE).insert(
+        rows.map((row) => ({ ...row, pre_order_filled: false }))
+      );
+
+      if (preOrderError) {
+        setSubmitting(false);
+        setSubmitError(`Order saved, but pre-order failed: ${preOrderError.message}`);
+        return;
+      }
+    }
+
+    setSubmitting(false);
+
     const productName = selectedProduct?.product ?? "Order";
-    setSuccessMessage(`${productName} recorded for ${customer.name}.`);
+    const qtyLabel = quantityNum > 1 ? `${quantityNum}× ` : "";
+    setSuccessMessage(
+      preOrder
+        ? `${qtyLabel}${productName} recorded for ${customer.name} and added to pre-orders.`
+        : `${qtyLabel}${productName} recorded for ${customer.name}.`
+    );
     resetForm();
 
     try {
@@ -150,6 +215,7 @@ export default function App() {
       setRecentOrders(orders);
       setOrdersError(null);
       setHistoryRefreshKey((key) => key + 1);
+      if (preOrder) setPreOrdersRefreshKey((key) => key + 1);
     } catch {
       // Non-blocking — order was saved successfully.
     }
@@ -218,6 +284,17 @@ export default function App() {
             }`}
           >
             Order history
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("preorders")}
+            className={`border-b-2 px-4 py-3 text-sm font-medium transition ${
+              activeTab === "preorders"
+                ? "border-brand-600 text-brand-700"
+                : "border-transparent text-muted hover:text-slate-700"
+            }`}
+          >
+            Pre-orders
           </button>
         </div>
       </div>
@@ -320,6 +397,66 @@ export default function App() {
 
               <fieldset>
                 <legend className="mb-2 text-sm font-medium text-slate-700">
+                  Double-sided
+                </legend>
+                <div className="flex gap-3">
+                  {[
+                    { value: false, label: "No" },
+                    { value: true, label: "Yes (+$3)" },
+                  ].map(({ value, label }) => (
+                    <label
+                      key={label}
+                      className={`flex flex-1 cursor-pointer items-center justify-center rounded-lg border px-4 py-3 text-sm font-medium transition ${
+                        doubleSided === value
+                          ? "border-brand-500 bg-brand-50 text-brand-700"
+                          : "border-border bg-white text-slate-700 hover:bg-slate-50"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="doubleSided"
+                        checked={doubleSided === value}
+                        onChange={() => setDoubleSided(value)}
+                        className="sr-only"
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+
+              <fieldset>
+                <legend className="mb-2 text-sm font-medium text-slate-700">
+                  Pre-order
+                </legend>
+                <div className="flex gap-3">
+                  {[
+                    { value: false, label: "No" },
+                    { value: true, label: "Yes" },
+                  ].map(({ value, label }) => (
+                    <label
+                      key={label}
+                      className={`flex flex-1 cursor-pointer items-center justify-center rounded-lg border px-4 py-3 text-sm font-medium transition ${
+                        preOrder === value
+                          ? "border-brand-500 bg-brand-50 text-brand-700"
+                          : "border-border bg-white text-slate-700 hover:bg-slate-50"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="preOrder"
+                        checked={preOrder === value}
+                        onChange={() => setPreOrder(value)}
+                        className="sr-only"
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+
+              <fieldset>
+                <legend className="mb-2 text-sm font-medium text-slate-700">
                   Payment <span className="text-danger">*</span>
                 </legend>
                 <div className="flex gap-3">
@@ -348,6 +485,40 @@ export default function App() {
                 </div>
               </fieldset>
 
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="quantity" className="mb-1.5 block text-sm font-medium text-slate-700">
+                    Quantity <span className="text-danger">*</span>
+                  </label>
+                  <input
+                    id="quantity"
+                    type="number"
+                    min={1}
+                    max={99}
+                    value={quantity}
+                    onChange={(e) => setQuantity(e.target.value)}
+                    className="w-full rounded-lg border border-border bg-white px-3.5 py-2.5 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+                    required
+                  />
+                </div>
+                <div>
+                  <label htmlFor="price-override" className="mb-1.5 block text-sm font-medium text-slate-700">
+                    Price override
+                  </label>
+                  <input
+                    id="price-override"
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={priceOverride}
+                    onChange={(e) => setPriceOverride(e.target.value)}
+                    placeholder="Use catalog price"
+                    className="w-full rounded-lg border border-border bg-white px-3.5 py-2.5 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+                  />
+                  <p className="mt-1 text-xs text-muted">Per item, in dollars. Leave blank for default.</p>
+                </div>
+              </div>
+
               <div>
                 <label htmlFor="notes" className="mb-1.5 block text-sm font-medium text-slate-700">
                   Notes
@@ -362,14 +533,27 @@ export default function App() {
                 />
               </div>
 
-              {selectedProduct && price != null && (
+              {selectedProduct && unitPrice != null && (
                 <div className="rounded-xl bg-slate-50 px-4 py-3">
                   <p className="text-xs font-medium uppercase tracking-wide text-muted">
-                    Price
+                    {quantityNum != null && quantityNum > 1 ? "Line total" : "Price"}
                   </p>
                   <p className="mt-0.5 text-2xl font-bold text-slate-900">
-                    {formatPrice(price) ?? "—"}
+                    {formatPrice(lineTotal ?? unitPrice) ?? "—"}
                   </p>
+                  {quantityNum != null && quantityNum > 1 && (
+                    <p className="mt-1 text-sm text-muted">
+                      {formatPrice(unitPrice)} each × {quantityNum}
+                    </p>
+                  )}
+                  {priceOverride.trim() && (
+                    <p className="mt-1 text-sm text-muted">Custom price override applied</p>
+                  )}
+                  {!priceOverride.trim() && doubleSided && (
+                    <p className="mt-1 text-sm text-muted">
+                      Includes ${DOUBLE_SIDED_SURCHARGE} double-sided surcharge
+                    </p>
+                  )}
                 </div>
               )}
             </div>
@@ -383,7 +567,11 @@ export default function App() {
               disabled={submitting || loadingProducts}
               className="mt-6 w-full rounded-xl bg-brand-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {submitting ? "Recording order..." : "Record order"}
+              {submitting
+                ? "Recording order..."
+                : quantityNum != null && quantityNum > 1
+                  ? `Record ${quantityNum} orders`
+                  : "Record order"}
             </button>
           </form>
         </section>
@@ -396,8 +584,10 @@ export default function App() {
               />
             </aside>
           </div>
+        ) : activeTab === "history" ? (
+          <OrderHistory active refreshKey={historyRefreshKey} />
         ) : (
-          <OrderHistory active={activeTab === "history"} refreshKey={historyRefreshKey} />
+          <PreOrdersPanel active refreshKey={preOrdersRefreshKey} />
         )}
       </main>
     </div>
