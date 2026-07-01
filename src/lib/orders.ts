@@ -13,6 +13,7 @@ export const ORDER_SELECT = `
   card,
   double_sided,
   price_override,
+  pre_order,
   products ( product, campus_premade, campus_custom ),
   customers ( name, email, phone_number )
 `;

@@ -28,6 +28,7 @@ export interface Order {
   card: boolean | null;
   double_sided: boolean | null;
   price_override: number | null;
+  pre_order: boolean | null;
 }
 
 export interface PreOrder extends Order {
@@ -54,6 +55,7 @@ export interface OrderInsert {
   card: boolean;
   double_sided: boolean;
   price_override: number | null;
+  pre_order?: boolean;
 }
 
 export function getProductPrice(

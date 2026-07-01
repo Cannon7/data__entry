@@ -3,6 +3,7 @@
 
 -- Schema updates
 ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS price_override bigint;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS pre_order boolean DEFAULT false;
 ALTER TABLE public."pre-orders" ADD COLUMN IF NOT EXISTS price_override bigint;
 
 -- 0. Schema + sequence access (needed for IDENTITY / serial columns)GRANT USAGE ON SCHEMA public TO anon;

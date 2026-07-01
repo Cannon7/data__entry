@@ -1,5 +1,5 @@
 import { supabase } from "./supabase";
-import type { PreOrderWithRelations } from "./types";
+import type { OrderInsert, PreOrderWithRelations } from "./types";
 
 export const PRE_ORDERS_TABLE = "pre-orders";
 
@@ -31,11 +31,46 @@ export async function fetchUnfilledPreOrders(): Promise<PreOrderWithRelations[]>
   return (data ?? []) as unknown as PreOrderWithRelations[];
 }
 
+function toOrderInsert(preOrder: PreOrderWithRelations): OrderInsert {
+  return {
+    product_id: preOrder.product_id!,
+    custom: preOrder.custom ?? false,
+    design: preOrder.design,
+    customer_id: preOrder.customer_id!,
+    employee: preOrder.employee ?? "",
+    notes: preOrder.notes,
+    card: preOrder.card ?? true,
+    double_sided: preOrder.double_sided ?? false,
+    price_override: preOrder.price_override,
+    pre_order: true,
+  };
+}
+
 export async function markPreOrderFilled(id: number) {
-  const { error } = await supabase
+  const { data: preOrder, error: fetchError } = await supabase
+    .from(PRE_ORDERS_TABLE)
+    .select(PRE_ORDER_SELECT)
+    .eq("id", id)
+    .single();
+
+  if (fetchError) throw fetchError;
+  if (!preOrder) throw new Error("Pre-order not found.");
+
+  const row = preOrder as unknown as PreOrderWithRelations;
+  if (!row.product_id || !row.customer_id) {
+    throw new Error("Pre-order is missing required product or customer.");
+  }
+
+  const { error: orderError } = await supabase
+    .from("orders")
+    .insert(toOrderInsert(row));
+
+  if (orderError) throw orderError;
+
+  const { error: updateError } = await supabase
     .from(PRE_ORDERS_TABLE)
     .update({ pre_order_filled: true })
     .eq("id", id);
 
-  if (error) throw error;
+  if (updateError) throw updateError;
 }

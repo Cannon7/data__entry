@@ -7,9 +7,10 @@ import { OrderListItem } from "./OrderListItem";
 interface PreOrdersPanelProps {
   active: boolean;
   refreshKey: number;
+  onCompleted?: () => void;
 }
 
-export function PreOrdersPanel({ active, refreshKey }: PreOrdersPanelProps) {
+export function PreOrdersPanel({ active, refreshKey, onCompleted }: PreOrdersPanelProps) {
   const [preOrders, setPreOrders] = useState<PreOrderWithRelations[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,6 +53,7 @@ export function PreOrdersPanel({ active, refreshKey }: PreOrdersPanelProps) {
     try {
       await markPreOrderFilled(id);
       setPreOrders((current) => current.filter((order) => order.id !== id));
+      onCompleted?.();
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
@@ -105,7 +107,7 @@ export function PreOrdersPanel({ active, refreshKey }: PreOrdersPanelProps) {
                     disabled={markingId === order.id}
                     className="rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-brand-700 disabled:opacity-60"
                   >
-                    {markingId === order.id ? "Marking..." : "Mark as filled"}
+                    {markingId === order.id ? "Completing..." : "Mark complete"}
                   </button>
                 }
               />

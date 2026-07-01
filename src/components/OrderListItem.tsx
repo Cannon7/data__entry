@@ -27,7 +27,9 @@ export function OrderListItem({ order, showDate = true, action }: OrderListItemP
             {order.price_override != null && " (override)"}
           </p>
           {order.notes && (
-            <p className="mt-0.5 truncate text-sm text-slate-600">{order.notes}</p>
+            <p className="mt-1 break-words whitespace-pre-wrap text-sm text-slate-600">
+              {order.notes}
+            </p>
           )}
         </div>
         <div className="shrink-0 text-right text-sm">

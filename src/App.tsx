@@ -179,14 +179,6 @@ export default function App() {
 
     const rows = Array.from({ length: quantityNum }, () => payload);
 
-    const { error: orderError } = await supabase.from("orders").insert(rows);
-
-    if (orderError) {
-      setSubmitting(false);
-      setSubmitError(orderError.message);
-      return;
-    }
-
     if (preOrder) {
       const { error: preOrderError } = await supabase.from(PRE_ORDERS_TABLE).insert(
         rows.map((row) => ({ ...row, pre_order_filled: false }))
@@ -194,7 +186,17 @@ export default function App() {
 
       if (preOrderError) {
         setSubmitting(false);
-        setSubmitError(`Order saved, but pre-order failed: ${preOrderError.message}`);
+        setSubmitError(preOrderError.message);
+        return;
+      }
+    } else {
+      const { error: orderError } = await supabase.from("orders").insert(
+        rows.map((row) => ({ ...row, pre_order: false }))
+      );
+
+      if (orderError) {
+        setSubmitting(false);
+        setSubmitError(orderError.message);
         return;
       }
     }
@@ -205,17 +207,20 @@ export default function App() {
     const qtyLabel = quantityNum > 1 ? `${quantityNum}× ` : "";
     setSuccessMessage(
       preOrder
-        ? `${qtyLabel}${productName} recorded for ${customer.name} and added to pre-orders.`
+        ? `${qtyLabel}${productName} added to pre-orders for ${customer.name}.`
         : `${qtyLabel}${productName} recorded for ${customer.name}.`
     );
     resetForm();
 
     try {
-      const orders = await fetchRecentOrders();
-      setRecentOrders(orders);
-      setOrdersError(null);
-      setHistoryRefreshKey((key) => key + 1);
-      if (preOrder) setPreOrdersRefreshKey((key) => key + 1);
+      if (preOrder) {
+        setPreOrdersRefreshKey((key) => key + 1);
+      } else {
+        const orders = await fetchRecentOrders();
+        setRecentOrders(orders);
+        setOrdersError(null);
+        setHistoryRefreshKey((key) => key + 1);
+      }
     } catch {
       // Non-blocking — order was saved successfully.
     }
@@ -587,7 +592,20 @@ export default function App() {
         ) : activeTab === "history" ? (
           <OrderHistory active refreshKey={historyRefreshKey} />
         ) : (
-          <PreOrdersPanel active refreshKey={preOrdersRefreshKey} />
+          <PreOrdersPanel
+            active
+            refreshKey={preOrdersRefreshKey}
+            onCompleted={async () => {
+              try {
+                const orders = await fetchRecentOrders();
+                setRecentOrders(orders);
+                setOrdersError(null);
+                setHistoryRefreshKey((key) => key + 1);
+              } catch {
+                // Non-blocking.
+              }
+            }}
+          />
         )}
       </main>
     </div>
